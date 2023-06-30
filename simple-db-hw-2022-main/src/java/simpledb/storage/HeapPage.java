@@ -292,7 +292,7 @@ public class HeapPage implements Page {
         int tid=t.getRecordId().getTupleNumber();
         if(!isSlotUsed(tid))
         {
-
+            
         }
 
     }
