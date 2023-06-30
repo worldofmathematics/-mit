@@ -21,14 +21,15 @@ import java.util.NoSuchElementException;
  */
 public class HeapPage implements Page {
 
-    final HeapPageId pid;//Ò³ºÅ
-    final TupleDesc td;//ÊôÐÔ
-    final byte[] header;//Ò³Í·
-    final Tuple[] tuples;//Ôª×éÒ³Êý¾Ý
-    final int numSlots;//²ÛÊýÁ¿
+    final HeapPageId pid;//é¡µå·
+    final TupleDesc td;//å±žæ€§
+    final byte[] header;//é¡µå¤´
+    final Tuple[] tuples;//å…ƒç»„é¡µæ•°æ®
+    final int numSlots;//æ§½æ•°é‡
 
-    byte[] oldData;//Ôª×é²å²Û¶¼ÓÐÒ»¸ö±ÈÌØÎ»
+    byte[] oldData;//å…ƒç»„æ’æ§½éƒ½æœ‰ä¸€ä¸ªæ¯”ç‰¹ä½
     private final Byte oldDataLock = (byte) 0;
+    //TODO:lab2 dirty
     private boolean dirty;
     private TransactionId tid;
 
@@ -78,7 +79,7 @@ public class HeapPage implements Page {
      *
      * @return the number of tuples on this page
      */
-    private int getNumTuples() {//Ã¿Ò³ÈÝÄÉµÄÔª×éÊýÁ¿
+    private int getNumTuples() {//æ¯é¡µå®¹çº³çš„å…ƒç»„æ•°é‡
         // TODO: some code goes here
         // floor((BufferPool.getPageSize()*8) / (tuple size * 8 + 1))
         return (int) Math.floor((BufferPool.getPageSize()*8.0)/(td.getSize()*8.0+1));
@@ -89,7 +90,7 @@ public class HeapPage implements Page {
      *
      * @return the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      */
-    private int getHeaderSize() {//Í·²¿×Ö½ÚÊý
+    private int getHeaderSize() {//å¤´éƒ¨å­—èŠ‚æ•°
 
         // TODO: some code goes here
         //ceiling(no. tuple slots / 8)
@@ -261,11 +262,11 @@ public class HeapPage implements Page {
     public void deleteTuple(Tuple t) throws DbException {
         // TODO: some code goes here
         int tid=t.getRecordId().getTupleNumber();
-        if(pid.equals(t.getRecordId().getPageId()))//pidÏàµÈ²ÅÄÜÉ¾³ý
+        if(pid.equals(t.getRecordId().getPageId()))//pidç›¸ç­‰æ‰èƒ½åˆ é™¤
         {
-            if(tid>=0&&tid<=numSlots)//ÅÐ¶ÏtidºÏ·¨
+            if(tid>=0&&tid<=numSlots)//åˆ¤æ–­tidåˆæ³•
             {
-                if(!isSlotUsed(tid))//²ÛÄÚÒÑ¾­¿ÕÁËÎÞÐèÉ¾³ý
+                if(!isSlotUsed(tid))//æ§½å†…å·²ç»ç©ºäº†æ— éœ€åˆ é™¤
                 {
                     throw new DbException("the slot is already empty");
                 }
@@ -299,7 +300,7 @@ public class HeapPage implements Page {
         {
             throw new DbException("no page or not match!");
         }
-        for (int i = 0; i < numSlots; i++) {//Ñ°ÕÒ¿ÕÎ»µÄ²Û
+        for (int i = 0; i < numSlots; i++) {//å¯»æ‰¾ç©ºä½çš„æ§½
             if(!isSlotUsed(i))
             {
                 markSlotUsed(i,true);
@@ -316,7 +317,7 @@ public class HeapPage implements Page {
      * Marks this page as dirty/not dirty and record that transaction
      * that did the dirtying
      */
-    public void markDirty(boolean dirty, TransactionId tid) {//·µ»ØÔàÒ³£¬ÔÚ½øÐÐÒ³Ìæ»»Ê±ÐèÒª½øÐÐÐ´»Ø
+    public void markDirty(boolean dirty, TransactionId tid) {//è¿”å›žè„é¡µï¼Œåœ¨è¿›è¡Œé¡µæ›¿æ¢æ˜¯
         // TODO: some code goes here
         // not necessary for lab1
         this.dirty=dirty;
@@ -349,13 +350,13 @@ public class HeapPage implements Page {
     }
 
     /**
-     * Returns true if associated slot on this page is filled.//Ò³Âú·µ»Øtrue
+     * Returns true if associated slot on this page is filled.//é¡µæ»¡è¿”å›žtrue
      */
-    public boolean isSlotUsed(int i) {//ÅÐ¶Ï²ÛÊÇ·ñÎª¿Õbitmap
+    public boolean isSlotUsed(int i) {//åˆ¤æ–­æ§½æ˜¯å¦ä¸ºç©ºbitmap
         // TODO: some code goes here
-        //¼ÆËãÔÚheaderÖÐµÄÎ»ÖÃ
+        //è®¡ç®—åœ¨headerä¸­çš„ä½ç½®
         int headerth=i/8;
-        //¼ÆËã¾ßÌåÎ»ÖÃ
+        //è®¡ç®—å…·ä½“ä½ç½®
         int th=i%8;
         int flag=(header[headerth]>>th)&1;
         return flag==1;
@@ -367,9 +368,9 @@ public class HeapPage implements Page {
     private void markSlotUsed(int i, boolean value) {
         // TODO: some code goes here
         // not necessary for lab1
-        //¼ÆËãÔÚheaderÖÐµÄÎ»ÖÃ
+        //è®¡ç®—åœ¨headerä¸­çš„ä½ç½®
         int headerth=i/8;
-        //¼ÆËã¾ßÌåÎ»ÖÃ
+        //è®¡ç®—å…·ä½“ä½ç½®
         int th=i%8;
         int flag=(header[headerth]>>th)&1;
         if(flag == 0 && value){

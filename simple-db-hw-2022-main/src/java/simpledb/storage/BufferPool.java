@@ -159,6 +159,21 @@ public class BufferPool {
             throws DbException, IOException, TransactionAbortedException {
         // TODO: some code goes here
         // not necessary for lab1
+        List<Page> p=Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid,t);
+        PageId pid=t.getRecordId().getPageId();
+        for (Page page : p) {
+            page.markDirty(true, tid);
+            for (int j = 0; j < numPages; j++)
+            {
+                if(buffer[j]==pid)
+                {
+
+                }
+            }
+
+        }
+
+
     }
 
     /**
