@@ -295,7 +295,6 @@ public class HeapPage implements Page {
     public void insertTuple(Tuple t) throws DbException {
         // TODO: some code goes here
         // not necessary for lab1
-        int tid=t.getRecordId().getTupleNumber();
         if(getNumUnusedSlots() == 0||!t.getTupleDesc().equals(td))
         {
             throw new DbException("no page or not match!");

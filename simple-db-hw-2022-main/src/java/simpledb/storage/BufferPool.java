@@ -206,7 +206,7 @@ public class BufferPool {
         // TODO: some code goes here
         // not necessary for lab1
         List<Page> p=Database.getCatalog().getDatabaseFile
-                (t.getRecordId().getPageId().getTableId()).deleteTuple(tid,t);//数组列表包含已修改的页面
+                (t.getRecordId().getPageId().getTableId()).insertTuple(tid,t);//数组列表包含已修改的页面
         for (Page page : p) {
             page.markDirty(true, tid);
         }
