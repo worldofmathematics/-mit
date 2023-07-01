@@ -2,15 +2,12 @@ package simpledb.storage;
 
 import simpledb.common.Database;
 import simpledb.common.DbException;
-import simpledb.common.DeadlockException;
 import simpledb.common.Permissions;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -39,7 +36,7 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
     private final Page[] buffer;
     private int numPages;
-    private Map<PageId,Page> page_store;
+    private final Map<PageId,Page> page_store;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -84,8 +81,7 @@ public class BufferPool {
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)//不太适用复杂情况事务ID。
     // TransactionId 如果对象不是事务，则此值为mull。
             throws TransactionAbortedException, DbException {
-        int idx = -1;
-
+        /*int idx = -1;
         for (int i = 0; i < buffer.length; ++i) {
             if (null == buffer[i]) {//如果缓冲池没有且buffer[i]为空，记录缓冲块位置
                 idx = i;
@@ -94,7 +90,17 @@ public class BufferPool {
             }
         }
         //去disk找将buffer[i]读入
-        return buffer[idx] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+        return buffer[idx] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);*/
+        if(!page_store.containsKey(pid))
+        {
+            if(page_store.size()>numPages)
+            {
+                evictPage();
+            }
+            Page p=Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+            page_store.put(pid,p);
+        }
+        return page_store.get(pid);
     }
 
     /**
@@ -141,7 +147,6 @@ public class BufferPool {
         // TODO: some code goes here
         // not necessary for lab1|lab2
     }
-
     /**
      * Add a tuple to the specified table on behalf of transaction tid.  Will
      * acquire a write lock on the page the tuple is added to and any other
@@ -206,7 +211,7 @@ public class BufferPool {
         // TODO: some code goes here
         // not necessary for lab1
         List<Page> p=Database.getCatalog().getDatabaseFile
-                (t.getRecordId().getPageId().getTableId()).insertTuple(tid,t);//数组列表包含已修改的页面
+                (t.getRecordId().getPageId().getTableId()).deleteTuple(tid,t);//数组列表包含已修改的页面
         for (Page page : p) {
             page.markDirty(true, tid);
         }
@@ -220,9 +225,8 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // TODO: some code goes here
         // not necessary for lab1
-        for (int i = 0; i < page_store.size(); i++) {
-            Page page= (Page)page_store.values();
-            flushPage(page.getId());
+        for(Page p:page_store.values()){
+            flushPage(p.getId());
         }
     }
 
@@ -270,5 +274,7 @@ public class BufferPool {
         // TODO: some code goes here
         // not necessary for lab1
     }
-
 }
+
+
+

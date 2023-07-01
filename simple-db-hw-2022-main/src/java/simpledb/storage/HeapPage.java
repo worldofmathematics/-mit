@@ -385,7 +385,7 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // TODO: some code goes here
-        ArrayList<Tuple> t=new ArrayList<Tuple>();
+        ArrayList<Tuple> t=new ArrayList<>();
         for(int i=0;i<numSlots;i++)
         {
             if(isSlotUsed(i))

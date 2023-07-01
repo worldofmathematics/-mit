@@ -18,15 +18,14 @@ public class Insert extends Operator {
 
     private static final long serialVersionUID = 1L;
 
-    private TransactionId tid;
+    private TransactionId t;
     private OpIterator child;
     private int tableId;
-    private DbFile dbFile;
     private final TupleDesc td;
 
     // helper for fetchNext
     private int counter;
-    private boolean called;
+    private boolean open;
 
     /**
      * Constructor.
@@ -42,13 +41,12 @@ public class Insert extends Operator {
         if (!child.getTupleDesc().equals(Database.getCatalog().getTupleDesc(tableId))) {
             throw new DbException("TupleDesc dose not match");
         }
-        this.tid = t;
+        this.t= t;
         this.child = child;
         this.tableId = tableId;
-        this.td = new TupleDesc(new Type[]{Type.INT_TYPE});
-        this.counter = -1;
-        this.called = false;
-        this.dbFile = Database.getCatalog().getDatabaseFile(tableId);
+        this.td = new TupleDesc(new Type[]{Type.INT_TYPE},new String[]{"insert nums"});
+        this.counter = 0;
+        this.open = false;
     }
 
     public TupleDesc getTupleDesc() {
@@ -64,14 +62,14 @@ public class Insert extends Operator {
     public void close() {
         super.close();
         this.child.close();
-        this.counter = -1;
-        this.called = false;
+        this.counter = 0;
+        this.open = false;
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         this.counter = 0;
         this.child.rewind();
-        this.called = false;
+        this.open = false;
     }
 
     /**
@@ -83,27 +81,27 @@ public class Insert extends Operator {
      * duplicate before inserting it.
      *
      * @return A 1-field tuple containing the number of inserted records, or
-     *         null if called more than once.
+     *         null if called more than once.//如果访问多从作为null
      * @see Database#getBufferPool
      * @see BufferPool#insertTuple
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
-        if (this.called) {
+        if (open) {
             return null;
         }
-        this.called = true;
+        this.open = true;
         while (this.child.hasNext()) {
-
+            Tuple p=child.next();
             try {
-                Database.getBufferPool().insertTuple(this.tid, dbFile.getId(), child.next());
+                Database.getBufferPool().insertTuple(t,tableId,p);
                 this.counter++;
             } catch (IOException e) {
                 throw new DbException("insertTuple failed");
             }
         }
-        Tuple tu = new Tuple(this.td);
-        tu.setField(0, new IntField(this.counter));
-        return tu;
+        Tuple t = new Tuple(this.td);
+        t.setField(0, new IntField(this.counter));
+        return t;
     }
 
     @Override

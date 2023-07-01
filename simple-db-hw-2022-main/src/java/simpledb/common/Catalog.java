@@ -21,18 +21,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Threadsafe
  */
 public class Catalog {
-    private final Map<Integer,String> names;
-    private  final Map<Integer,DbFile> dbfiles;
-    private  final Map<Integer,String> pkeyFields;
+
+    private final Map<Integer, String> names;
+    private final Map<Integer, DbFile> dbfiles;
+    private final Map<Integer, String> pkeyFields;
     /**
      * Constructor.
      * Creates a new, empty catalog.
      */
     public Catalog() {
-        // TODO: some code goes here
-        names=new HashMap<>();
-        dbfiles=new HashMap<>();
-        pkeyFields=new HashMap<>();
+        names = new HashMap<>();
+        dbfiles = new HashMap<>();
+        pkeyFields = new HashMap<>();
     }
 
     /**
@@ -46,24 +46,20 @@ public class Catalog {
      * @param pkeyField the name of the primary key field
      */
     public void addTable(DbFile file, String name, String pkeyField) {
-        // TODO: some code goes here
-        int tableid=file.getId();
-        for(Integer id:names.keySet())
-        {
-            if(names.get(id).equals(name))
-            {
-                if(id!=tableid)
-                {
+        int tableId = file.getId();
+        for (Integer id : names.keySet()) {
+            if (names.get(id).equals(name)) {
+                if (id != tableId) {
                     names.remove(id);
                     dbfiles.remove(id);
                     pkeyFields.remove(id);
                 }
+                break;
             }
-            break;
         }
-        dbfiles.put(tableid,file);
-        names.put(tableid,name);
-        pkeyFields.put(tableid,pkeyField);
+        names.put(tableId, name);
+        dbfiles.put(tableId, file);
+        pkeyFields.put(tableId, pkeyField);
     }
 
     public void addTable(DbFile file, String name) {
@@ -88,15 +84,12 @@ public class Catalog {
      * @throws NoSuchElementException if the table doesn't exist
      */
     public int getTableId(String name) throws NoSuchElementException {
-        // TODO: some code goes here
-        for(Integer id:names.keySet())
-        {
-            if(names.get(id).equals(name))
-            {
+        for (Integer id : names.keySet()) {
+            if(names.get(id).equals(name)) {
                 return id;
             }
         }
-        throw new NoSuchElementException("Table doesn't exist!");
+        throw new NoSuchElementException();
     }
 
     /**
@@ -107,12 +100,10 @@ public class Catalog {
      * @throws NoSuchElementException if the table doesn't exist
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
-        // TODO: some code goes here
-        if(dbfiles.containsKey(tableid))
-        {
+        if (dbfiles.containsKey(tableid)) {
             return dbfiles.get(tableid).getTupleDesc();
         }
-        throw new NoSuchElementException("table doesn't exist!");
+        throw new NoSuchElementException();
     }
 
     /**
@@ -123,42 +114,34 @@ public class Catalog {
      *                function passed to addTable
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
-        // TODO: some code goes here
-        if(dbfiles.containsKey(tableid))
-        {
+        if (dbfiles.containsKey(tableid)) {
             return dbfiles.get(tableid);
         }
-        throw new NoSuchElementException("table doesn't exist!");
+        throw new NoSuchElementException();
     }
 
     public String getPrimaryKey(int tableid) {
-        // TODO: some code goes here
-        if(pkeyFields.containsKey(tableid))
-        {
+        if (pkeyFields.containsKey(tableid)) {
             return pkeyFields.get(tableid);
         }
-        throw new NoSuchElementException("pkey doesn't exist!");
+        throw new NoSuchElementException();
     }
 
     public Iterator<Integer> tableIdIterator() {
-        // TODO: some code goes here
         return dbfiles.keySet().iterator();
     }
 
     public String getTableName(int id) {
-        // TODO: some code goes here
-        if(names.containsKey(id))
-        {
+        if (names.containsKey(id)) {
             return names.get(id);
         }
-        throw new NoSuchElementException("name doesn't exist!");
+        throw new NoSuchElementException();
     }
 
     /**
      * Delete all tables from the catalog
      */
     public void clear() {
-        // TODO: some code goes here
         names.clear();
         dbfiles.clear();
         pkeyFields.clear();
