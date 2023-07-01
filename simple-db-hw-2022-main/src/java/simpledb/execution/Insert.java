@@ -15,12 +15,15 @@ import simpledb.transaction.TransactionId;
 public class Insert extends Operator {
 
     private static final long serialVersionUID = 1L;
+    private TransactionId t;
+    private OpIterator child;
+    private int tableId;
 
     /**
      * Constructor.
      *
      * @param t       The transaction running the insert.
-     * @param child   The child operator from which to read tuples to be inserted.
+     * @param child   The child operator from which to read tuples to be inserted.要从中读取要插入的元组的子运算符。
      * @param tableId The table in which to insert tuples.
      * @throws DbException if TupleDesc of child differs from table into which we are to
      *                     insert.

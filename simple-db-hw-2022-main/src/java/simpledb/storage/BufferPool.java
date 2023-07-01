@@ -39,6 +39,7 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
     private final Page[] buffer;
     private int numPages;
+    private Map<PageId,Page> page_store;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -48,6 +49,7 @@ public class BufferPool {
     public BufferPool(int numPages) {
         this.numPages = numPages;
         buffer = new Page[numPages];
+        this.page_store=new HashMap<>();
     }
 
     public static int getPageSize() {
@@ -159,21 +161,31 @@ public class BufferPool {
             throws DbException, IOException, TransactionAbortedException {
         // TODO: some code goes here
         // not necessary for lab1
-        List<Page> p=Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid,t);
-        PageId pid=t.getRecordId().getPageId();
+        List<Page> p=Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid,t);//数组列表包含已修改的页面
+        boolean in=false;
         for (Page page : p) {
             page.markDirty(true, tid);
-            for (int j = 0; j < numPages; j++)
+            if(page_store.size()<numPages)//buffer里有空闲位置
             {
-                if(buffer[j]==pid)
+                in=true;
+            }
+            for(int i=0;i<numPages;i++)
+            {
+                if(buffer[i]==page.getId())//该页已经缓存到buffer中
                 {
-
+                    in=true;
                 }
             }
-
+            if(in)//可以插入
+            {
+                page_store.put(page.getId(),page);
+            }
+            else//此时说明buffer已经满了
+            {
+                evictPage();
+                page_store.put(page.getId(),page);
+            }
         }
-
-
     }
 
     /**
@@ -193,6 +205,11 @@ public class BufferPool {
             throws DbException, IOException, TransactionAbortedException {
         // TODO: some code goes here
         // not necessary for lab1
+        List<Page> p=Database.getCatalog().getDatabaseFile
+                (t.getRecordId().getPageId().getTableId()).deleteTuple(tid,t);//数组列表包含已修改的页面
+        for (Page page : p) {
+            page.markDirty(true, tid);
+        }
     }
 
     /**
@@ -203,7 +220,10 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // TODO: some code goes here
         // not necessary for lab1
-
+        for (int i = 0; i < page_store.size(); i++) {
+            Page page= (Page)page_store.values();
+            flushPage(page.getId());
+        }
     }
 
     /**
@@ -218,6 +238,7 @@ public class BufferPool {
     public synchronized void removePage(PageId pid) {
         // TODO: some code goes here
         // not necessary for lab1
+        page_store.remove(pid);
     }
 
     /**
@@ -228,6 +249,9 @@ public class BufferPool {
     private synchronized void flushPage(PageId pid) throws IOException {
         // TODO: some code goes here
         // not necessary for lab1
+        Page p=page_store.get(pid);
+        Database.getCatalog().getDatabaseFile(p.getId().getTableId()).writePage(p);
+        p.markDirty(false,null);
     }
 
     /**
