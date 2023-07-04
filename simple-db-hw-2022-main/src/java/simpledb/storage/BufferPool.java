@@ -8,6 +8,7 @@ import simpledb.transaction.TransactionId;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -38,6 +39,69 @@ public class BufferPool {
     private int numPages;
     private final Map<PageId,Page> page_store;
 
+    /**
+     * 页面的锁
+     */
+    private class PageLock{
+        private TransactionId tid;
+        private int locktype;//0为共享锁，1为互斥锁
+
+        public PageLock(TransactionId tid, int locktype) {
+            this.tid = tid;
+            this.locktype = locktype;
+        }
+
+        public TransactionId getTid() {
+            return tid;
+        }
+
+        public void setTid(TransactionId tid) {
+            this.tid = tid;
+        }
+
+        public int getLocktype() {
+            return locktype;
+        }
+
+        public void setLocktype(int locktype) {
+            this.locktype = locktype;
+        }
+    }
+    /**
+     * 锁的管理，管理加锁和释放锁
+     * 1.申请锁
+     * 2.释放锁
+     * 3.判断指定事务是否持有某一page上的锁
+     */
+    private class LockManager{
+        ConcurrentHashMap<PageId,ConcurrentHashMap<TransactionId,PageLock>> lockMap;
+        public LockManager(){
+            this.lockMap=new ConcurrentHashMap<>();
+        }
+        /**
+         * Return true if the specified transaction has a lock on the specified page
+         */
+        public boolean holdsLock(TransactionId tid, PageId p) {//判断指定事务是否持有某一page上的锁
+            // TODO: some code goes here
+            // not necessary for lab1|lab2
+            ConcurrentHashMap<TransactionId,PageLock> pagelocks;
+            pagelocks=lockMap.get(p);
+            if(pagelocks==null)
+            {
+                return false;
+            }
+           for(TransactionId t:pagelocks.keySet())
+           {
+               if(t==tid)
+               {
+                   return true;
+               }
+           }
+           return false;
+        }
+
+
+    }
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -127,14 +191,6 @@ public class BufferPool {
         // not necessary for lab1|lab2
     }
 
-    /**
-     * Return true if the specified transaction has a lock on the specified page
-     */
-    public boolean holdsLock(TransactionId tid, PageId p) {
-        // TODO: some code goes here
-        // not necessary for lab1|lab2
-        return false;
-    }
 
     /**
      * Commit or abort a given transaction; release all locks associated to

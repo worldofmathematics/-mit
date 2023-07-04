@@ -98,7 +98,7 @@ public class IntHistogram {
                         tuplenum += bucket[i];
                     }
                     // 2 * 4 + 2 - 1 -7
-                    tuplenum += (min + (getIndex(v) + 1) * w - 1 - v) *  (1.0 *bucket[index] / w);//?
+                    tuplenum += (min + (getIndex(v) + 1) * w - 1 - v) *  (1.0 *bucket[index] / w);
                     return tuplenum / nup;
                 }
             case GREATER_THAN_OR_EQ:
