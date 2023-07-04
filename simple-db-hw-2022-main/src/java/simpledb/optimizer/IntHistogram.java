@@ -38,7 +38,7 @@ public class IntHistogram {
         this.bucket=new int [buckets];//默认初始化即为0
         this.min=min;
         this.max=max;
-        this.w=(1+max-min)/(bucket.length*1.0);
+        this.w=Math.max(1,(max - min + 1.0) / buckets);
         this.nup=0;
     }
 
@@ -98,7 +98,7 @@ public class IntHistogram {
                         tuplenum += bucket[i];
                     }
                     // 2 * 4 + 2 - 1 -7
-                    tuplenum +=  (1.0 *bucket[index] / w)*(max-v-(bucket.length-index)*w);
+                    tuplenum += (min + (getIndex(v) + 1) * w - 1 - v) *  (1.0 *bucket[index] / w);//?
                     return tuplenum / nup;
                 }
             case GREATER_THAN_OR_EQ:
@@ -106,8 +106,8 @@ public class IntHistogram {
             case LESS_THAN:
                 return 1-estimateSelectivity(Predicate.Op.GREATER_THAN_OR_EQ,v);
             case EQUALS:
-                return 1-estimateSelectivity(Predicate.Op.LESS_THAN,v)
-                        -estimateSelectivity(Predicate.Op.GREATER_THAN,v);
+                return 1-estimateSelectivity(Predicate.Op.GREATER_THAN,v)
+                        -estimateSelectivity(Predicate.Op.LESS_THAN,v);
             case LESS_THAN_OR_EQ:
                 return estimateSelectivity(Predicate.Op.LESS_THAN,v)+estimateSelectivity(Predicate.Op.EQUALS,v);
             case NOT_EQUALS:
@@ -132,6 +132,7 @@ public class IntHistogram {
             sum += j/(nup*1.0);
         }
         return sum/(bucket.length*1.0);
+
     }
 
     /**
