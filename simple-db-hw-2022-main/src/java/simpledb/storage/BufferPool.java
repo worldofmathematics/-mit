@@ -310,6 +310,7 @@ public class BufferPool {
     public void unsafeReleasePage(TransactionId tid, PageId pid) {
         // TODO: some code goes here
         // not necessary for lab1|lab2
+        lockManager.releaselock(tid,pid);
     }
 
     /**
