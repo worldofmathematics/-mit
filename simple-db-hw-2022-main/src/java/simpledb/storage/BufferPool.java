@@ -38,6 +38,7 @@ public class BufferPool {
     private final Page[] buffer;
     private int numPages;
     private final Map<PageId,Page> page_store;
+    private LockManager lockManager;
 
     /**
      * 页面的锁
@@ -67,19 +68,24 @@ public class BufferPool {
             this.locktype = locktype;
         }
     }
+
     /**
      * 锁的管理，管理加锁和释放锁
-     * 1.申请锁
-     * 2.释放锁
-     * 3.判断指定事务是否持有某一page上的锁
+     *       1.申请锁
+     *       2.释放锁
+     *       3.判断指定事务是否持有某一page上的锁
      */
     private class LockManager{
         ConcurrentHashMap<PageId,ConcurrentHashMap<TransactionId,PageLock>> lockMap;
         public LockManager(){
             this.lockMap=new ConcurrentHashMap<>();
         }
+
         /**
          * Return true if the specified transaction has a lock on the specified page
+         * @param tid 需要进行判断的事务
+         * @param p 需要进行判断的page
+         * @return
          */
         public boolean holdsLock(TransactionId tid, PageId p) {//判断指定事务是否持有某一page上的锁
             // TODO: some code goes here
@@ -100,7 +106,112 @@ public class BufferPool {
            return false;
         }
 
+        /**
+         * 释放指定事务指定页上的锁
+         * @param tid 需要进行释放锁操作的事务
+         * @param pid 需要进行释放锁的页
+         */
+        public synchronized void releaselock(TransactionId tid,PageId pid){
+            if(holdsLock(tid,pid)){
+                ConcurrentHashMap<TransactionId,PageLock> pagelocks;
+                pagelocks=lockMap.get(pid);
+                pagelocks.remove(tid);
+                if(pagelocks.size()==0)
+                {
+                    lockMap.remove(pid);
+                }
+            }
+            this.notify();
+        }
 
+        /**
+         * 某个事务某页申请加锁
+         * @param tid 申请加锁的事务
+         * @param pid 申请加锁的页
+         * @param lockType 申请加锁的类型
+         * @return
+         * 加锁原理
+         * 1.在一个事务可以读一个对象之前，它必须在对象上有一个共享锁。
+         * 2.在事务可以写对象之前，它必须对对象具有互斥锁。
+         * 3.多个事务可以对一个对象有一个共享锁。
+         * 4.只有一个事务可以对一个对象拥有互斥锁。
+         * 5.如果事务 t 是唯一持有对象上的共享锁的事务，那么事务 t 可以将其对对象  的锁升级为互斥锁
+         * 具体实现：1.先判断该页是否有锁，如果没有锁直接进行加锁操作，并将所加锁的信息加入map中
+         *         2.该页面上确定有锁，分两种情况，一种是事务tid上有锁，一种是事务tid上没锁
+         *         2.1tid上有锁，   申请的是S锁：直接授予
+         *                        申请的是X锁，如果t是唯一持有共享锁的事务，则进行锁升级；
+         *                        否则，不能进行升级，可能出现死锁，等待/抛出异常
+         *          2.2不是t上的锁，申请的是S锁，如果只有S锁，直接获取；如果存在X锁，等待/抛出异常
+         *                        申请的是X锁，等待，抛出异常
+         */
+        //0为S锁，1为X锁
+        // ConcurrentHashMap<PageId,ConcurrentHashMap<TransactionId,PageLock>> lockMap;
+        public synchronized boolean getLocks(TransactionId tid,PageId pid,int lockType) throws InterruptedException {
+            if (lockMap.get(pid)==null)
+            {
+                return putLock(tid,pid,lockType);
+            }
+            //获取页面上的锁
+            ConcurrentHashMap<TransactionId,PageLock> page_lock=lockMap.get(pid);
+            //判断是否为申请事务tid上的锁
+            //没有事务tid上的锁
+            if(page_lock.get(tid)==null){
+                if(lockType==1)//申请X锁
+                {
+                    wait(100);
+                    System.out.println("Can't get the exclusive lock because other transactionId has locks!");
+                    return false;
+                } else if (lockType == 0) {//申请S锁
+                    if(page_lock.size()>1)//页面上的锁的数量大于1说明只有S锁
+                    {
+                        return putLock(tid,pid,lockType);
+                    } else if (page_lock.size()==1) {
+                        Collection<PageLock> p=page_lock.values();
+                        for (PageLock value : p)
+                        {
+                            if(value.getLocktype()==0)//如果有的一个锁为S锁
+                            {
+                                return putLock(tid,pid,lockType);
+                            }else{
+                                wait(100);
+                                return false;
+                            }
+                        }
+
+                    }
+                }
+            }else{//事务tid上有锁
+                if(lockType==0){//申请的为S锁
+                    return true;
+                }else{
+                    if(page_lock.get(tid).getLocktype()==1){
+                        return  true;
+                    }else {
+                        if(page_lock.size()>1)
+                        {
+                            wait(100);
+                            return false;
+                        }else{
+                            page_lock.remove(tid);
+                            return putLock(tid,pid,lockType);
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+        public boolean putLock(TransactionId tid, PageId pid,int lockType){
+            PageLock pagelocks=new PageLock(tid,lockType);
+            ConcurrentHashMap<TransactionId,PageLock> p=lockMap.get(pid);
+            if(p==null)
+            {
+                p=new ConcurrentHashMap<>();
+                lockMap.put(pid,p);
+            }
+            p.put(tid,pagelocks);
+            lockMap.put(pid,p);
+            return true;
+        }
     }
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -111,6 +222,7 @@ public class BufferPool {
         this.numPages = numPages;
         buffer = new Page[numPages];
         this.page_store=new HashMap<>();
+        this.lockManager=new LockManager();
     }
 
     public static int getPageSize() {
@@ -155,6 +267,25 @@ public class BufferPool {
         }
         //去disk找将buffer[i]读入
         return buffer[idx] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);*/
+        int lockType;
+        if (perm == Permissions.READ_ONLY){
+            lockType = 0;
+        } else {
+            lockType = 1;
+        }
+        long st = System.currentTimeMillis();
+        boolean isacquired = false;
+        while(!isacquired){
+            try {
+                isacquired =lockManager.getLocks(tid,pid,lockType);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            long now = System.currentTimeMillis();
+            if(now - st > 300){
+                throw new TransactionAbortedException();
+            }
+        }
         if(!page_store.containsKey(pid))
         {
             if(page_store.size()>numPages)
