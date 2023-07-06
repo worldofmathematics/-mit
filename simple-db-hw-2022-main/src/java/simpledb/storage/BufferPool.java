@@ -39,6 +39,7 @@ public class BufferPool {
     private int numPages;
     private final Map<PageId,Page> page_store;
     private LockManager lockManager;
+    private LRUCache lruCache;
 
     /**
      * 页面的锁
@@ -174,6 +175,7 @@ public class BufferPool {
                                 return putLock(tid,pid,lockType);
                             }else{
                                 wait(100);
+                                System.out.println("Can't get the shared lock because other transactionId has the exclusive lock!");
                                 return false;
                             }
                         }
@@ -182,14 +184,17 @@ public class BufferPool {
                 }
             }else{//事务tid上有锁
                 if(lockType==0){//申请的为S锁
+                    //System.out.println("Succeed!");
                     return true;
                 }else{
                     if(page_lock.get(tid).getLocktype()==1){
+                        //System.out.println("Succeed!");
                         return  true;
                     }else {
                         if(page_lock.size()>1)
                         {
                             wait(100);
+                            System.out.println("Can't get the exclusive lock because other transactionId has the exclusive lock!");
                             return false;
                         }else{
                             page_lock.remove(tid);
@@ -210,6 +215,7 @@ public class BufferPool {
             }
             p.put(tid,pagelocks);
             lockMap.put(pid,p);
+            //System.out.println("Succeed!");
             return true;
         }
     }
@@ -223,6 +229,7 @@ public class BufferPool {
         buffer = new Page[numPages];
         this.page_store=new HashMap<>();
         this.lockManager=new LockManager();
+        this.lruCache=new LRUCache(numPages);
     }
 
     public static int getPageSize() {
@@ -286,16 +293,12 @@ public class BufferPool {
                 throw new TransactionAbortedException();
             }
         }
-        if(!page_store.containsKey(pid))
-        {
-            if(page_store.size()>numPages)
-            {
-                evictPage();
-            }
-            Page p=Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
-            page_store.put(pid,p);
+        if (lruCache.get(pid) == null) {
+            DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
+            Page page = file.readPage(pid);
+            lruCache.put(pid, page);
         }
-        return page_store.get(pid);
+        return lruCache.get(pid);
     }
 
     /**
@@ -315,7 +318,7 @@ public class BufferPool {
 
     /**
      * Release all locks associated with a given transaction.
-     *
+     *so can simply be implemented by calling transactionComplete(tid, true).
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) {
@@ -354,8 +357,7 @@ public class BufferPool {
             throws DbException, IOException, TransactionAbortedException {
         // TODO: some code goes here
         // not necessary for lab1
-        List<Page> p=Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid,t);//数组列表包含已修改的页面
-        boolean in=false;
+        /*boolean in=false;
         for (Page page : p) {
             page.markDirty(true, tid);
             if(page_store.size()<numPages)//buffer里有空闲位置
@@ -371,14 +373,22 @@ public class BufferPool {
             }
             if(in)//可以插入
             {
-                page_store.put(page.getId(),page);
+               lruCache.put(page.getId(),page);
             }
             else//此时说明buffer已经满了
             {
                 evictPage();
-                page_store.put(page.getId(),page);
+                lruCache.put(page.getId(),page);
             }
-        }
+        }*/
+        /*List<Page> p=Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid,t);//数组列表包含已修改的页面
+        for(Page pages:p)
+        {
+            pages.markDirty(true,tid);
+            lruCache.put(pages.getId(),pages);
+        }*/
+        DbFile f = Database.getCatalog().getDatabaseFile(tableId);
+        updateBufferPool(f.insertTuple(tid, t), tid);
     }
 
     /**
@@ -398,13 +408,22 @@ public class BufferPool {
             throws DbException, IOException, TransactionAbortedException {
         // TODO: some code goes here
         // not necessary for lab1
-        List<Page> p=Database.getCatalog().getDatabaseFile
+       /* List<Page> p=Database.getCatalog().getDatabaseFile
                 (t.getRecordId().getPageId().getTableId()).deleteTuple(tid,t);//数组列表包含已修改的页面
         for (Page page : p) {
             page.markDirty(true, tid);
+        }*/
+        DbFile updateFile = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
+        List<Page> updatePages = updateFile.deleteTuple(tid, t);
+        updateBufferPool(updatePages, tid);
+    }
+    public void updateBufferPool(List<Page> updatePages, TransactionId tid) {
+        for (Page page : updatePages) {
+            page.markDirty(true, tid);
+            // update bufferPool
+            lruCache.put(page.getId(), page);
         }
     }
-
     /**
      * Flush all dirty pages to disk.
      * NB: Be careful using this routine -- it writes dirty data to disk so will
@@ -413,9 +432,16 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // TODO: some code goes here
         // not necessary for lab1
-        for(Page p:page_store.values()){
+        /*for(Page p:page_store.values()){
             flushPage(p.getId());
+        }*/
+        for (Map.Entry<PageId, LRUCache.DLinkNode> group : lruCache.cache.entrySet()) {
+            Page page = group.getValue().value;
+            if (page.isDirty() != null) {
+                this.flushPage(group.getKey());
+            }
         }
+
     }
 
     /**
@@ -430,7 +456,8 @@ public class BufferPool {
     public synchronized void removePage(PageId pid) {
         // TODO: some code goes here
         // not necessary for lab1
-        page_store.remove(pid);
+        LRUCache.DLinkNode node=lruCache.cache.get(pid);
+        lruCache.removeNode(node);
     }
 
     /**
@@ -441,7 +468,10 @@ public class BufferPool {
     private synchronized void flushPage(PageId pid) throws IOException {
         // TODO: some code goes here
         // not necessary for lab1
-        Page p=page_store.get(pid);
+        /*Page p=page_store.get(pid);
+        Database.getCatalog().getDatabaseFile(p.getId().getTableId()).writePage(p);
+        p.markDirty(false,null);*/
+        Page p=lruCache.get(pid);
         Database.getCatalog().getDatabaseFile(p.getId().getTableId()).writePage(p);
         p.markDirty(false,null);
     }
@@ -458,9 +488,137 @@ public class BufferPool {
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
+    /**
+     *
+     *LRU 算法 <a href="https://juejin.cn/post/7027062270702125093">...</a>
+     * LRU算法实现需要一个双向链表和哈希表
+     * 实现一个LRU Cache,该Cache可以满足查找一个数据，删除一个数据，添加一个数据
+     * 查找一个数据：散列表中查找数据的时间复杂度接近 O(1)，所以通过散列表，我们可以很快地在缓存
+     *            中找到一个数据。当找到数据之后，我们还需要将它移动到双向链表的尾部。
+     *删除一个数据：在散列表中根据映射关系，通过双向链表删除想要删除的数据
+     *添加一个数据：我们需要先看这个数据是否已经在缓存中。如果已经在其中，需要将其移动到双向链表
+     *           的尾部；如果不在其中，还要看缓存有没有满。如果满了，则将双向链表头部的结点删除，
+     *           然后再将数据放到链表的尾部；如果没有满，就直接将数据放到链表的尾部。
+     */
     private synchronized void evictPage() throws DbException {
         // TODO: some code goes here
         // not necessary for lab1
+    }
+
+    public class LRUCache{
+        /**
+         * 双向链表节点
+         */
+        class DLinkNode{
+            PageId key;
+            Page value;
+            DLinkNode prev;
+            DLinkNode next;
+            public DLinkNode(){};
+            public DLinkNode(PageId _key, Page _value)
+            {
+                this.key=_key;
+                this.value=_value;
+            }
+        }
+        /**
+         * 哈希表
+         */
+        private Map<PageId, DLinkNode> cache;
+        private int size;
+        private int capacity;
+        private DLinkNode head=new DLinkNode(null ,null);
+        private DLinkNode tail=new DLinkNode(null,null);
+        /**
+         * 双向链表
+         */
+        public LRUCache(int capacity)
+        {
+            size=0;
+            this.capacity=capacity;
+            cache=new HashMap<>();
+            this.head=new DLinkNode();
+            this.head=new DLinkNode();
+            head.next = tail;
+            tail.prev = head;
+        }
+        /**
+         * get
+         */
+        public Page get(PageId key)
+        {
+            if(cache.containsKey(key)){
+                removeTohead(cache.get(key));
+                return cache.get(key).value ;
+            }else{
+                return null;
+            }
+
+
+        }
+        /**
+         * put
+         */
+        public void put(PageId key,Page value){
+            DLinkNode node=cache.get(key);
+            if(node==null)
+            {
+                //如果key不在创建一个新的节点
+                DLinkNode newnode=new DLinkNode(key,value);
+                //添加进哈希表
+                cache.put(key,newnode);
+                //添加至链表头部
+                addTohead(newnode);
+                size++;
+                if(size>capacity)
+                {
+                    DLinkNode removeNode=tail.prev;
+                    while (removeNode.value.isDirty()!=null&&removeNode!=head)
+                    {
+                        removeNode=removeNode.prev;
+                    }
+                    if(removeNode!=head&&removeNode!=tail)
+                    {
+                        cache.remove(removeNode.key);
+                        removeNode(removeNode);
+                        size--;
+                    }
+                }
+            }else{
+                removeTohead(node);
+            }
+        }
+        /**
+         * 添加节点至双向链表头部
+         */
+        public void addTohead(DLinkNode node){
+            node.prev=head;
+            node.next=head.next;
+            head.next.prev=node;
+            head.next=node;
+        }
+        /**
+         * 删除节点
+         */
+        public void removeNode(DLinkNode node){
+            node.prev.next=node.next;
+            node.next.prev=node.prev;
+        }
+        /**
+         * 将节点移动到头部
+         */
+        public void removeTohead(DLinkNode node){
+            removeNode(node);
+            addTohead(node);
+        }
+        /**
+         * 删除尾节点并返回
+
+        public DLinkNode removetail(){
+            DLinkNode p=tail.prev;
+            removeNode(p);
+            return p;
+        }*/
     }
 }
 

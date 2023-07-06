@@ -155,6 +155,7 @@ public class HeapFile implements DbFile {
      * @return An ArrayList contain the pages that were modified
      * @throws DbException if the tuple cannot be added
      * @throws IOException if the needed file can't be read/written
+     * 如果一个事务 t 在页 p 上找不到空闲槽， t 可能会立即释放对 p 的锁
      */
     public List<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
@@ -167,6 +168,7 @@ public class HeapFile implements DbFile {
                     (tid,new HeapPageId(this.getId(),i),Permissions.READ_WRITE);
             if(p.getNumUnusedSlots()==0)
             {
+                Database.getBufferPool().unsafeReleasePage(tid,t.getRecordId().getPageId());
                 continue;
             }
             p.insertTuple(t);
@@ -191,6 +193,7 @@ public class HeapFile implements DbFile {
         // TODO: some code goes here
         HeapPage p=(HeapPage) Database.getBufferPool().getPage(tid,t.getRecordId().getPageId(),Permissions.READ_WRITE);
         p.deleteTuple(t);
+        p.markDirty(true,tid);
         return Collections.singletonList(p);//？？？
         // not necessary for lab1
     }
