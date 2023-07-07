@@ -289,7 +289,7 @@ public class BufferPool {
                 e.printStackTrace();
             }
             long now = System.currentTimeMillis();
-            if(now - st > 300){
+            if(now - st > 500){
 
                 //System.out.println("超时死锁");
                 throw new TransactionAbortedException();
@@ -299,6 +299,12 @@ public class BufferPool {
             DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
             Page page = file.readPage(pid);
             lruCache.put(pid, page);
+        }
+        System.out.print("Buffer get :");
+        System.out.println(lruCache.get(pid)==null);
+        if(lruCache.get(pid)==null)
+        {
+            throw new DbException("没有合适的页存储空间或者所有页都为脏页！！");
         }
         return lruCache.get(pid);
     }
@@ -429,6 +435,8 @@ public class BufferPool {
             pages.markDirty(true,tid);
             lruCache.put(pages.getId(),pages);
         }*/
+        //System.out.println("InsertTuple");
+        //System.out.println(tableId);
         DbFile f = Database.getCatalog().getDatabaseFile(tableId);
         updateBufferPool(f.insertTuple(tid, t), tid);
     }
@@ -611,8 +619,10 @@ public class BufferPool {
          */
         public void put(PageId key,Page value){
             DLinkNode node=cache.get(key);
+            //System.out.println(node==null);
             if(node==null)
             {
+                //System.out.println("node is null");
                 //如果key不在创建一个新的节点
                 DLinkNode newnode=new DLinkNode(key,value);
                 //添加进哈希表
@@ -620,10 +630,15 @@ public class BufferPool {
                 //添加至链表头部
                 addTohead(newnode);
                 size++;
+               // System.out.print("cap: ");
+                //System.out.println(capacity);
+                //System.out.print("size: ");
+                //System.out.println(size);
                 if(size>capacity)
                 {
+                    //System.out.print("size bigger than cap");
                     DLinkNode removeNode=tail.prev;
-                    while (removeNode.value.isDirty()!=null&&removeNode!=head)
+                    while (removeNode.value.isDirty()!=null)
                     {
                         removeNode=removeNode.prev;
                     }
@@ -634,10 +649,15 @@ public class BufferPool {
                         size--;
                     }
                 }
-            }else{
+                //System.out.print("size<cap");
+            }else {
+                //System.out.println("else执行了");
+                //System.out.println("node is not null");
                 removeTohead(node);
-                cache.put(key,node);
             }
+
+
+
         }
         /**
          * 添加节点至双向链表头部
