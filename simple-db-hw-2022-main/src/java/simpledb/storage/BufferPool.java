@@ -290,6 +290,8 @@ public class BufferPool {
             }
             long now = System.currentTimeMillis();
             if(now - st > 300){
+
+                System.out.println("超时死锁");
                 throw new TransactionAbortedException();
             }
         }
@@ -319,25 +321,65 @@ public class BufferPool {
     /**
      * Release all locks associated with a given transaction.
      *so can simply be implemented by calling transactionComplete(tid, true).
+     * 直接调用函数
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) {
         // TODO: some code goes here
         // not necessary for lab1|lab2
+        transactionComplete(tid,true);
     }
 
 
     /**
      * Commit or abort a given transaction; release all locks associated to
      * the transaction.
-     *
+     * When you commit, you should flush dirty pages associated to the transaction to disk.
+     *  When you abort, you should revert any changes made by the transaction by restoring
+     *  the page to its on-disk state.
+     *  所以需要定义一个新的函数进行revert操作
+     *  无论事务提交还是终止，您都应该释放 BufferPool 保持的有关事务的任何状态，包括释放
+     * 事务持有的任何锁。
      * @param tid    the ID of the transaction requesting the unlock
      * @param commit a flag indicating whether we should commit or abort
      */
     public void transactionComplete(TransactionId tid, boolean commit) {
         // TODO: some code goes here
         // not necessary for lab1|lab2
+        if(commit)
+        {
+            try {
+                flushPages(tid);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }else{
+            revert(tid);
+        }
+        for(PageId pid:lruCache.cache.keySet())
+        {
+            if(lockManager.holdsLock(tid,pid))
+            {
+                lockManager.releaselock(tid,pid);
+            }
+        }
     }
+    public void revert(TransactionId tid){
+        for(Map.Entry<PageId, LRUCache.DLinkNode> group : lruCache.cache.entrySet())
+        {
+            PageId p=group.getKey();
+            Page pages=group.getValue().value;
+            if(tid.equals(pages.isDirty()))
+            {
+                int tableId=p.getTableId();
+                Page page=Database.getCatalog().getDatabaseFile(tableId).readPage(p);
+                lruCache.removeNode(group.getValue());
+                lruCache.put(p,page);
+            }
+
+        }
+    }
+
     /**
      * Add a tuple to the specified table on behalf of transaction tid.  Will
      * acquire a write lock on the page the tuple is added to and any other
@@ -482,6 +524,14 @@ public class BufferPool {
     public synchronized void flushPages(TransactionId tid) throws IOException {
         // TODO: some code goes here
         // not necessary for lab1|lab2
+        for (Map.Entry<PageId, LRUCache.DLinkNode> group : lruCache.cache.entrySet()){
+            PageId pid=group.getKey();
+            Page p=group.getValue().value;
+            if(tid.equals(p.isDirty()))
+            {
+                flushPage(pid);
+            }
+        }
     }
 
     /**
