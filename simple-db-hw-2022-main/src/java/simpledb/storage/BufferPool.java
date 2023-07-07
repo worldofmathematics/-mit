@@ -291,7 +291,7 @@ public class BufferPool {
             long now = System.currentTimeMillis();
             if(now - st > 300){
 
-                System.out.println("≥¨ ±À¿À¯");
+                //System.out.println("≥¨ ±À¿À¯");
                 throw new TransactionAbortedException();
             }
         }
@@ -636,6 +636,7 @@ public class BufferPool {
                 }
             }else{
                 removeTohead(node);
+                cache.put(key,node);
             }
         }
         /**
