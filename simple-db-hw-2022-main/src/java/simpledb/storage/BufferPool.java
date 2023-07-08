@@ -147,59 +147,59 @@ public class BufferPool {
          */
         //0为S锁，1为X锁
         // ConcurrentHashMap<PageId,ConcurrentHashMap<TransactionId,PageLock>> lockMap;
-        public synchronized boolean getLocks(TransactionId tid,PageId pid,int lockType) throws InterruptedException {
-            if (lockMap.get(pid)==null)
-            {
-                return putLock(tid,pid,lockType);
+        public synchronized boolean getLocks(TransactionId tid,PageId pid,int lockType ) throws InterruptedException, TransactionAbortedException {
+            final String thread = Thread.currentThread().getName();
+            if (lockMap.get(pid) == null) {
+                return putLock(tid, pid, lockType);
             }
+
             //获取页面上的锁
-            ConcurrentHashMap<TransactionId,PageLock> page_lock=lockMap.get(pid);
+            ConcurrentHashMap<TransactionId, PageLock> page_lock = lockMap.get(pid);
             //判断是否为申请事务tid上的锁
             //没有事务tid上的锁
-            if(page_lock.get(tid)==null){
-                if(lockType==1)//申请X锁
+            if (page_lock.get(tid) == null) {
+                if (lockType == 1)//申请X锁
                 {
-                    wait(100);
-                    System.out.println("Can't get the exclusive lock because other transactionId has locks!");
+                    wait(10);
+                    System.out.println(thread + ": the " + pid + " have lock with diff txid, transaction" + tid + " require write lock, await...");
                     return false;
                 } else if (lockType == 0) {//申请S锁
-                    if(page_lock.size()>1)//页面上的锁的数量大于1说明只有S锁
+                    if (page_lock.size() > 1)//页面上的锁的数量大于1说明只有S锁
                     {
-                        return putLock(tid,pid,lockType);
-                    } else if (page_lock.size()==1) {
-                        Collection<PageLock> p=page_lock.values();
-                        for (PageLock value : p)
-                        {
-                            if(value.getLocktype()==0)//如果有的一个锁为S锁
+                        return putLock(tid, pid, lockType);
+                    } else if (page_lock.size() == 1) {
+                        Collection<PageLock> p = page_lock.values();
+                        for (PageLock value : p) {
+                            if (value.getLocktype() == 0)//如果有的一个锁为S锁
                             {
-                                return putLock(tid,pid,lockType);
-                            }else{
-                                wait(100);
-                                System.out.println("Can't get the shared lock because other transactionId has the exclusive lock!");
+                                return putLock(tid, pid, lockType);
+                            } else {
+                                wait(10);
+                                System.out.println(thread + ": the " + pid + " have one write lock with diff txid, transaction" + tid + " require read lock, await...");
                                 return false;
                             }
                         }
 
                     }
                 }
-            }else{//事务tid上有锁
-                if(lockType==0){//申请的为S锁
+            } else if (page_lock.get(tid) != null) {//事务tid上有锁
+                if (lockType == 0) {//申请的为S锁
                     //System.out.println("Succeed!");
                     return true;
-                }else{
-                    if(page_lock.get(tid).getLocktype()==1){
+                } else {//申请的为X锁
+                    if (page_lock.get(tid).getLocktype() == 1) {
+                        return true;
+                    }
+                    if(page_lock.size()>1)
+                    {
+                        System.out.println(thread + ": the " + pid + " have many read locks, transaction" + tid + " require write lock, abort!!!");
+                        throw new TransactionAbortedException();
+                    }
+                    if(page_lock.get(tid).getLocktype()==0&&page_lock.size()==1){
                         //System.out.println("Succeed!");
+                        page_lock.get(tid).setLocktype(1);
+                        page_lock.put(tid, page_lock.get(tid));
                         return  true;
-                    }else {
-                        if(page_lock.size()>1)
-                        {
-                            wait(100);
-                            System.out.println("Can't get the exclusive lock because other transactionId has the exclusive lock!");
-                            return false;
-                        }else{
-                            page_lock.remove(tid);
-                            return putLock(tid,pid,lockType);
-                        }
                     }
                 }
             }
@@ -276,35 +276,41 @@ public class BufferPool {
         return buffer[idx] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);*/
         int lockType;
         if (perm == Permissions.READ_ONLY){
-            lockType = 0;
+            lockType =0;
         } else {
             lockType = 1;
         }
         long st = System.currentTimeMillis();
         boolean isacquired = false;
         while(!isacquired){
+
             try {
-                isacquired =lockManager.getLocks(tid,pid,lockType);
+                isacquired = lockManager.getLocks(tid,pid,lockType);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
             long now = System.currentTimeMillis();
-            if(now - st > 500){
-
-                //System.out.println("超时死锁");
+            if(now - st > 300){
                 throw new TransactionAbortedException();
             }
         }
+
+        /*try {
+            if(lockManager.getLocks(tid,pid,lockType,0))
+            {
+                throw new TransactionAbortedException();
+            }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }*/
         if (lruCache.get(pid) == null) {
             DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
             Page page = file.readPage(pid);
             lruCache.put(pid, page);
         }
-        System.out.print("Buffer get :");
-        System.out.println(lruCache.get(pid)==null);
         if(lruCache.get(pid)==null)
         {
-            throw new DbException("没有合适的页存储空间或者所有页都为脏页！！");
+            throw new DbException("该页不存在");
         }
         return lruCache.get(pid);
     }
@@ -380,7 +386,11 @@ public class BufferPool {
                 int tableId=p.getTableId();
                 Page page=Database.getCatalog().getDatabaseFile(tableId).readPage(p);
                 lruCache.removeNode(group.getValue());
-                lruCache.put(p,page);
+                try {
+                    lruCache.put(p,page);
+                } catch (DbException e) {
+                    throw new RuntimeException(e);
+                }
             }
 
         }
@@ -471,7 +481,11 @@ public class BufferPool {
         for (Page page : updatePages) {
             page.markDirty(true, tid);
             // update bufferPool
-            lruCache.put(page.getId(), page);
+            try {
+                lruCache.put(page.getId(), page);
+            } catch (DbException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
     /**
@@ -617,44 +631,38 @@ public class BufferPool {
         /**
          * put
          */
-        public void put(PageId key,Page value){
+        public void put(PageId key,Page value) throws DbException{
             DLinkNode node=cache.get(key);
+            //如果key不在创建一个新的节点
+            DLinkNode newnode=new DLinkNode(key,value);
             //System.out.println(node==null);
             if(node==null)
             {
-                //System.out.println("node is null");
-                //如果key不在创建一个新的节点
-                DLinkNode newnode=new DLinkNode(key,value);
-                //添加进哈希表
-                cache.put(key,newnode);
-                //添加至链表头部
-                addTohead(newnode);
                 size++;
-               // System.out.print("cap: ");
-                //System.out.println(capacity);
-                //System.out.print("size: ");
-                //System.out.println(size);
                 if(size>capacity)
                 {
-                    //System.out.print("size bigger than cap");
                     DLinkNode removeNode=tail.prev;
                     while (removeNode.value.isDirty()!=null)
                     {
                         removeNode=removeNode.prev;
+                        if(removeNode==head||removeNode==tail) {
+                        throw new DbException("都是脏页");
                     }
-                    if(removeNode!=head&&removeNode!=tail)
-                    {
-                        cache.remove(removeNode.key);
-                        removeNode(removeNode);
-                        size--;
                     }
+                    cache.remove(removeNode.key);
+                    removeNode(removeNode);
+                    size--;
                 }
                 //System.out.print("size<cap");
             }else {
                 //System.out.println("else执行了");
                 //System.out.println("node is not null");
-                removeTohead(node);
+                removeNode(node);
             }
+            //添加进哈希表
+            cache.put(key,newnode);
+            //添加至链表头部
+            addTohead(newnode);
 
 
 

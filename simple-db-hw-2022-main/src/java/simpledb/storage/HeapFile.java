@@ -168,8 +168,6 @@ public class HeapFile implements DbFile {
             HeapPageId pid = new HeapPageId(getId(),i);
             HeapPage p = (HeapPage) Database.getBufferPool().getPage
                     (tid, pid, Permissions.READ_WRITE);
-            System.out.print("HeapFile: insert :");
-            System.out.println(p==null);
             if (p.getNumUnusedSlots() == 0) {
                 Database.getBufferPool().unsafeReleasePage(tid,pid);
                 continue;
@@ -234,8 +232,6 @@ public class HeapFile implements DbFile {
                 HeapPageId pid=new HeapPageId(heapFile.getId(),pageNumber);
                 // 从缓存池中查询相应的页面 读权限
                 HeapPage page =(HeapPage)Database.getBufferPool().getPage(tid,pid,Permissions.READ_ONLY);
-                System.out.print("HeapFile getPageTuple :");
-                System.out.println(page==null);
                 return page.iterator();
             }else{
                 throw new DbException(String.format("heapFile %d not contain page %d", pageNumber, heapFile.getId()));
